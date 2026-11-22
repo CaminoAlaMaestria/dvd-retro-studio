@@ -13,77 +13,119 @@ export function Player({ movieId, capIndex = 0, navigate, onShare }) {
   const [voiceOn, setVoiceOn] = useState(true);
   const videoRef = useRef(null);
   const audioRef = useRef(null);
+  const pendingSeek = useRef(null);
+
+  useEffect(() => {
+    setCap(capIndex || 0);
+    setPlaying(false);
+    setTime(0);
+  }, [movieId, capIndex]);
 
   const chapters = movie?.chapters ?? [];
-  const current = chapters[cap];
-  const hasClips = chapters.some((c) => c.clip);
+  const safeCap = chapters.length ? Math.min(cap, chapters.length - 1) : 0;
+  const current = chapters[safeCap];
+  const hasVideo = !!(current?.clip || movie?.video);
 
   const src = useSrc(current?.clip ?? movie?.video ?? current?.poster ?? movie?.cover);
-  const segDuration = current?.clip ? current.clipDuration ?? 0 : chapterEnd(movie, cap) - (current?.start ?? 0);
   const segStart = current?.clip ? 0 : current?.start ?? 0;
+  const segDuration = current?.clip
+    ? current.clipDuration ?? dur ?? 0
+    : chapters.length
+      ? Math.max(0.5, chapterEnd(movie, safeCap) - segStart)
+      : dur || movie?.duration || 0;
 
   const goTo = useCallback(
     (i) => {
-      if (!movie) return;
+      if (!movie || !chapters.length) return;
       const next = Math.max(0, Math.min(chapters.length - 1, i));
+      const ch = chapters[next];
+      const target = ch?.clip ? 0 : ch?.start ?? 0;
+      const srcChanged = !!(ch?.clip || current?.clip);
       setCap(next);
-      setTime(0);
+      setTime(target);
+      pendingSeek.current = target;
+      if (!srcChanged && videoRef.current && videoRef.current.readyState >= 1) {
+        videoRef.current.currentTime = target;
+        pendingSeek.current = null;
+        if (playing) videoRef.current.play().catch(() => {});
+      }
     },
-    [movie, chapters.length]
+    [movie, chapters, current?.clip, playing]
   );
 
-  /* Al cambiar de capítulo: buscar el inicio y preparar la voz en off. */
+  /* Al cambiar de capítulo o fuente: preparar la voz en off. */
   useEffect(() => {
-    const v = videoRef.current;
-    if (v && current && !current.clip) v.currentTime = current.start ?? 0;
     const a = audioRef.current;
-    if (a) {
-      a.pause();
-      a.currentTime = 0;
-      if (current?.voiceOver) {
-        resolveSrc(current.voiceOver).then((u) => {
-          if (u) {
-            a.src = u;
-            if (playing) a.play().catch(() => {});
-          }
-        });
-      }
+    if (!a) return;
+    a.pause();
+    a.currentTime = 0;
+    if (current?.voiceOver) {
+      resolveSrc(current.voiceOver).then((u) => {
+        if (u) {
+          a.src = u;
+          if (playing && voiceOn) a.play().catch(() => {});
+        }
+      });
+    } else {
+      a.removeAttribute("src");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cap, src]);
+  }, [safeCap, current?.voiceOver?.mediaId, src]);
+
+  /* Capítulos de solo foto: avanzar automáticamente tras 4 s cuando está en Play. */
+  useEffect(() => {
+    if (!playing || hasVideo || !chapters.length) return;
+    const t0 = performance.now();
+    const timer = setInterval(() => {
+      const elapsed = (performance.now() - t0) / 1000;
+      setTime(elapsed);
+      if (elapsed >= 4) {
+        clearInterval(timer);
+        if (safeCap < chapters.length - 1) goTo(safeCap + 1);
+        else setPlaying(false);
+      }
+    }, 100);
+    return () => clearInterval(timer);
+  }, [playing, hasVideo, safeCap, chapters.length, goTo]);
 
   const togglePlay = () => {
     const v = videoRef.current;
     const a = audioRef.current;
-    if (!v) return;
     if (playing) {
-      v.pause();
+      v?.pause();
       a?.pause();
       setPlaying(false);
     } else {
-      v.play().catch(() => {});
+      if (hasVideo && v) v.play().catch(() => {});
       if (voiceOn && current?.voiceOver) a?.play().catch(() => {});
       setPlaying(true);
     }
   };
 
   const onEnded = () => {
-    if (cap < chapters.length - 1) goTo(cap + 1);
+    if (safeCap < chapters.length - 1) goTo(safeCap + 1);
     else setPlaying(false);
   };
 
   const onTime = (t, d) => {
     setTime(t);
     if (d) setDur(d);
+    // Si es un único vídeo principal sin clips, sincroniza el capítulo activo con la posición actual
+    if (!current?.clip && movie?.video && chapters.length > 1) {
+      const idx = chapters.findLastIndex((c) => t + 0.2 >= (c.start ?? 0));
+      if (idx >= 0 && idx !== safeCap) setCap(idx);
+    }
     const a = audioRef.current;
-    if (a && playing && current?.voiceOver && Math.abs(a.currentTime - (t - segStart)) > 0.45) {
+    if (a && playing && voiceOn && current?.voiceOver && Math.abs(a.currentTime - (t - segStart)) > 0.45) {
       a.currentTime = Math.max(0, t - segStart);
     }
   };
 
   if (!movie) return <main className="page"><p className="text-muted">Cargando película…</p></main>;
 
-  const progress = segDuration > 0 ? Math.min(100, ((time - segStart) / segDuration) * 100) : 0;
+  const localTime = hasVideo ? Math.max(0, time - segStart) : time;
+  const maxDur = hasVideo ? segDuration : 4;
+  const progress = maxDur > 0 ? Math.min(100, (localTime / maxDur) * 100) : 0;
 
   return (
     <main className="player-wrap">
@@ -103,15 +145,21 @@ export function Player({ movieId, capIndex = 0, navigate, onShare }) {
       <div className="player-screen">
         <RemasterView
           ref={videoRef}
-          kind={current?.clip || movie.video ? "video" : "image"}
+          kind={hasVideo ? "video" : "image"}
           src={src}
           settings={movie.remaster}
           enabled={movie.remasterOn}
+          onLoadedMetadata={(el) => {
+            const target = pendingSeek.current ?? (!current?.clip ? current?.start ?? 0 : 0);
+            if (target > 0) el.currentTime = target;
+            pendingSeek.current = null;
+            if (playing) el.play().catch(() => {});
+          }}
           onTime={onTime}
           onEnded={onEnded}
         />
         <span style={{ position: "absolute", left: 12, top: 12, background: "rgba(5,7,13,.7)", borderRadius: 8, padding: "4px 10px", fontSize: 12 }}>
-          {String(cap + 1).padStart(2, "0")} · {current?.title ?? ""}
+          {String(safeCap + 1).padStart(2, "0")} · {current?.title ?? movie.title}
         </span>
         {movie.remasterOn && (
           <span className="text-cyan" style={{ position: "absolute", right: 12, top: 12, background: "rgba(5,7,13,.7)", borderRadius: 8, padding: "4px 10px", fontSize: 12 }}>
@@ -122,21 +170,31 @@ export function Player({ movieId, capIndex = 0, navigate, onShare }) {
       </div>
 
       <div className="player-controls">
-        <Control data-nav className="btn-icon" aria-label="Capítulo anterior" onClick={() => goTo(cap - 1)} disabled={cap === 0}>
+        <Control data-nav className="btn-icon" aria-label="Capítulo anterior" onClick={() => goTo(safeCap - 1)} disabled={safeCap === 0}>
           <SkipBack />
         </Control>
         <Control data-nav className="btn-gold btn-icon" style={{ width: 52, height: 52 }} aria-label={playing ? "Pausar" : "Reproducir"} onClick={togglePlay}>
           {playing ? <Pause /> : <Play />}
         </Control>
-        <Control data-nav className="btn-icon" aria-label="Capítulo siguiente" onClick={() => goTo(cap + 1)} disabled={cap >= chapters.length - 1}>
+        <Control data-nav className="btn-icon" aria-label="Capítulo siguiente" onClick={() => goTo(safeCap + 1)} disabled={safeCap >= chapters.length - 1}>
           <SkipForward />
         </Control>
         <span className="mono text-cyan" style={{ fontSize: 13 }}>
-          {fmtTime(Math.max(0, time - segStart))} <span className="text-muted">/ {fmtTime(segDuration)}</span>
+          {fmtTime(localTime)} <span className="text-muted">/ {fmtTime(maxDur)}</span>
         </span>
         <span className="grow" />
         {current?.voiceOver && (
-          <Control data-nav className={voiceOn ? "btn-outline-gold" : ""} onClick={() => setVoiceOn((v) => !v)} aria-pressed={voiceOn}>
+          <Control
+            data-nav
+            className={voiceOn ? "btn-outline-gold" : ""}
+            onClick={() => {
+              const next = !voiceOn;
+              setVoiceOn(next);
+              if (!next) audioRef.current?.pause();
+              else if (playing) audioRef.current?.play().catch(() => {});
+            }}
+            aria-pressed={voiceOn}
+          >
             <Mic /> Voz en off {voiceOn ? "✓" : "✕"}
           </Control>
         )}
@@ -149,13 +207,13 @@ export function Player({ movieId, capIndex = 0, navigate, onShare }) {
         className="dvd-range"
         style={{ "--p": `${progress}%` }}
         min={0}
-        max={Math.max(0.1, segDuration)}
+        max={Math.max(0.1, maxDur)}
         step={0.1}
-        value={Math.max(0, time - segStart)}
+        value={Math.min(localTime, maxDur)}
         onChange={(e) => {
           const t = Number(e.target.value);
           setTime(segStart + t);
-          if (videoRef.current) videoRef.current.currentTime = segStart + t;
+          if (videoRef.current && hasVideo) videoRef.current.currentTime = segStart + t;
           if (audioRef.current) audioRef.current.currentTime = t;
         }}
       />
@@ -166,7 +224,7 @@ export function Player({ movieId, capIndex = 0, navigate, onShare }) {
             key={c.id}
             data-nav
             className="chip"
-            data-on={i === cap}
+            data-on={i === safeCap}
             onClick={() => goTo(i)}
             style={{ display: "flex", alignItems: "center", gap: 8 }}
           >
@@ -177,7 +235,7 @@ export function Player({ movieId, capIndex = 0, navigate, onShare }) {
       </div>
 
       <p className="text-muted" style={{ fontSize: 13 }}>
-        {movie.title} · {chapters.length} capítulos · {fmtTime(movie.duration)}
+        {movie.title} · {chapters.length} capítulos · {fmtTime(movie.duration || dur)}
       </p>
     </main>
   );

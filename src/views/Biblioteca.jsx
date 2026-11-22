@@ -71,6 +71,13 @@ export function Biblioteca({ movies, slideshows, navigate, onShare, onOpenMovie 
     setRemove(null);
   };
 
+  const createBlankMovie = async () => {
+    const movie = newMovie("Nueva película");
+    await saveMovie(movie);
+    toast("Proyecto creado — sube el vídeo principal o añade capítulos");
+    navigate(`#/editor/${movie.id}`);
+  };
+
   return (
     <main className="page">
       <div className="page-head">
@@ -85,6 +92,9 @@ export function Biblioteca({ movies, slideshows, navigate, onShare, onOpenMovie 
         <div className="row wrap" style={{ gap: 8 }}>
           <Control data-nav className="btn-gold" onClick={() => videoInput.current?.click()} disabled={busy}>
             <Upload /> {busy ? "Guardando…" : "Subir vídeo"}
+          </Control>
+          <Control data-nav className="btn-outline-gold" onClick={createBlankMovie}>
+            <Plus /> Nueva película
           </Control>
           <Control data-nav className="btn-outline-cyan" onClick={() => navigate("#/pases/nuevo")}>
             <Plus /> Pase de fotos

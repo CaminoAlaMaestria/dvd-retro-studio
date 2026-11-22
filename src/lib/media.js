@@ -49,24 +49,40 @@ export function videoPoster(url, at = 0.5) {
     v.playsInline = true;
     v.preload = "auto";
     v.src = url;
-    const fail = () => reject(new Error("No se pudo leer el vídeo"));
-    v.onerror = fail;
-    v.onloadedmetadata = () => {
-      v.currentTime = Math.min(at, Math.max(0.05, (v.duration || 1) / 2));
-    };
-    v.onseeked = () => {
+    let settled = false;
+    const capture = () => {
+      if (settled) return;
+      settled = true;
+      const w = v.videoWidth || 480;
+      const h = v.videoHeight || 270;
       const c = document.createElement("canvas");
       c.width = 480;
-      c.height = Math.round((480 * (v.videoHeight || 270)) / (v.videoWidth || 480));
+      c.height = Math.max(1, Math.round((480 * h) / w));
       const ctx = c.getContext("2d");
       if (!ctx) return reject(new Error("Canvas no disponible"));
       ctx.drawImage(v, 0, 0, c.width, c.height);
+      const dur = Number.isFinite(v.duration) ? v.duration : 0;
       c.toBlob(
-        (b) => (b ? resolve({ blob: b, duration: Number.isFinite(v.duration) ? v.duration : 0 }) : reject(new Error("No se pudo crear el póster"))),
+        (b) => (b ? resolve({ blob: b, duration: dur }) : reject(new Error("No se pudo crear el póster"))),
         "image/jpeg",
         0.85
       );
     };
+    const fail = () => {
+      if (!settled) {
+        settled = true;
+        reject(new Error("No se pudo leer el vídeo"));
+      }
+    };
+    v.onerror = fail;
+    v.onloadedmetadata = () => {
+      const target = Number.isFinite(v.duration) ? Math.min(at, Math.max(0.05, v.duration / 2)) : at;
+      v.currentTime = target;
+      setTimeout(() => {
+        if (!settled && v.readyState >= 2) capture();
+      }, 1200);
+    };
+    v.onseeked = capture;
   });
 }
 

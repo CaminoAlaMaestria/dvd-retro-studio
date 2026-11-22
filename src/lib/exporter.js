@@ -92,87 +92,10 @@ export async function downloadMovieFile(movie) {
   downloadBlob(rec.blob, `${slug(movie.title)}${extFor(rec.type)}`);
 }
 
-/* ---------- render de película: clips/capítulos → un solo vídeo ---------- */
+/* ---------- render de película: clips/capítulos/fotos → un solo vídeo ---------- */
 export async function renderMovieVideo(movie, onProgress) {
-  const segs = [];
-  const clipChapters = movie.chapters.filter((c) => c.clip);
-  if (clipChapters.length) {
-    for (const c of clipChapters) segs.push({ src: c.clip, start: 0, end: c.clipDuration ?? 0, voiceOver: c.voiceOver });
-  } else if (movie.video) {
-    movie.chapters.forEach((c, i) => {
-      const end = movie.chapters[i + 1]?.start ?? movie.duration;
-      if (end > c.start) segs.push({ src: movie.video, start: c.start, end, voiceOver: c.voiceOver });
-    });
-    if (!segs.length) segs.push({ src: movie.video, start: 0, end: movie.duration });
-  }
-  if (!segs.length) throw new Error("No hay vídeo que exportar");
-  const total = segs.reduce((n, s) => n + (s.end - s.start), 0) || 1;
-
-  const W = 1280, H = 720;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const x = canvas.getContext("2d");
-  const actx = getAudioCtx();
-  const dest = actx.createMediaStreamDestination();
-  const stream = new MediaStream([...canvas.captureStream(30).getVideoTracks(), ...dest.stream.getAudioTracks()]);
-  const rec = new MediaRecorder(stream, { mimeType: pickMime() });
-  const chunks = [];
-  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-  const done = new Promise((res) => (rec.onstop = res));
-  rec.start(250);
-
-  let elapsed = 0;
-  for (const seg of segs) {
-    const url = await resolveSrc(seg.src);
-    if (!url) continue;
-    const v = document.createElement("video");
-    v.src = url;
-    v.playsInline = true;
-    v.crossOrigin = "anonymous";
-    const srcNode = actx.createMediaElementSource(v);
-    srcNode.connect(dest);
-    let voEl = null, voNode = null;
-    if (seg.voiceOver) {
-      const voUrl = await resolveSrc(seg.voiceOver);
-      if (voUrl) {
-        voEl = document.createElement("audio");
-        voEl.src = voUrl;
-        voNode = actx.createMediaElementSource(voEl);
-        voNode.connect(dest);
-      }
-    }
-    await new Promise((res, rej) => {
-      v.onloadedmetadata = res;
-      v.onerror = rej;
-    });
-    if (seg.start > 0) {
-      v.currentTime = seg.start;
-      await new Promise((r) => v.addEventListener("seeked", r, { once: true }));
-    }
-    const segDur = seg.end - seg.start;
-    await new Promise((res) => {
-      const tick = () => {
-        if (v.currentTime >= seg.end || v.ended) return res();
-        x.fillStyle = "#000";
-        x.fillRect(0, 0, W, H);
-        drawCover(x, v, W, H);
-        onProgress?.(Math.min(1, (elapsed + Math.max(0, v.currentTime - seg.start)) / total));
-        requestAnimationFrame(tick);
-      };
-      v.play().catch(() => {});
-      voEl?.play().catch(() => {});
-      tick();
-    });
-    v.pause();
-    voEl?.pause();
-    try { srcNode.disconnect(); } catch { /* noop */ }
-    try { voNode?.disconnect(); } catch { /* noop */ }
-    elapsed += segDur;
-  }
-  rec.stop();
-  await done;
-  return new Blob(chunks, { type: rec.mimeType });
+  const res = await exportForTv(movie, onProgress);
+  return res.video;
 }
 
 /* ---------- música libre renderizada a buffer (para exportar) ---------- */

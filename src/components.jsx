@@ -197,7 +197,7 @@ void main(){
 }`;
 
 export const RemasterView = forwardRef(function RemasterView(
-  { kind, src, settings, enabled, split = null, kenBurns, className, autoPlay, muted, onTime, onEnded, style },
+  { kind, src, settings, enabled, split = null, kenBurns, className, autoPlay, muted, onTime, onEnded, onLoadedMetadata, style },
   ref
 ) {
   const canvas = useRef(null);
@@ -302,6 +302,7 @@ export const RemasterView = forwardRef(function RemasterView(
             autoPlay={autoPlay}
             muted={muted}
             crossOrigin="anonymous"
+            onLoadedMetadata={(e) => onLoadedMetadata?.(e.currentTarget)}
             onTimeUpdate={(e) => onTime?.(e.currentTarget.currentTime, e.currentTarget.duration || 0)}
             onEnded={onEnded}
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
@@ -384,7 +385,8 @@ export function ShareModal({ open, onClose, movieId, slideshowId, initial = "mov
           toast("Vídeo descargado (archivo estándar)");
         } else {
           const blob = await renderMovieVideo(movie, setProgress);
-          downloadBlob(blob, `${slug(movie.title)}.webm`);
+          const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+          downloadBlob(blob, `${slug(movie.title)}.${ext}`);
           toast("Vídeo generado y descargado");
         }
       } else if (scope === "slideshow") {

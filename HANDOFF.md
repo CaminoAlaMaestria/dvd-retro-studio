@@ -18,7 +18,11 @@
 
 ## Última sesión
 
-- **(Arena)** Fusionadas las joyas de `otra version` (exportador TV MP4+capítulos+SRT, reproductor autónomo `.html`, grabar pantalla, filtros en vivo, ducking automático, Galería en portada, edición de pases y fotos reales de demo) + mejoras de `mi-video-treasure-shelf` (Mando TV virtual, PWA, CI, `HANDOFF.md`, `COLLAB.md`). Build en verde y test unitario de `tv-chapters.js` pasado.
+- **(Arena — revisión profunda y arreglos en Editor/Reproductor)**:
+  - **Editor (`src/views/Editor.jsx`)**: añadida subida/cambio de **película principal** y **carátula**; selector de **pases vinculados**; botones para reordenar capítulos (↑/↓), añadir escenas desde foto, cambiar foto de capítulo y guardado automático; corregido el bug que reseteaba `time` a `0` al seleccionar capítulos y los botones rotos `downloadVideo`/`downloadZip`.
+  - **Reproductor (`src/views/Player.jsx`)**: sincronización del capítulo activo con el tiempo de reproducción, `onLoadedMetadata` seek al cambiar de clip/capítulo, y temporizador automático para capítulos de solo foto.
+  - **Biblioteca (`src/views/Biblioteca.jsx`)**: botón «Nueva película» para crear un disco desde cero y abrirlo directo en el Editor.
+  - **Exportador / Media / Componentes (`src/lib/exporter.js`, `src/lib/media.js`, `src/components.jsx`)**: `renderMovieVideo` unificado con `exportForTv` (soporta clips, vídeo principal y fotos), `onLoadedMetadata` en `RemasterView` y fallback en `videoPoster`. Build en verde sin advertencias.
 
 ## Siguiente paso sugerido
 
