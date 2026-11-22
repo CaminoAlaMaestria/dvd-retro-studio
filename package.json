@@ -1,0 +1,22 @@
+{
+  "name": "dvd-retro-studio",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "DVD Retro Studio — biblioteca local de películas, capítulos, pases de fotos y estudio de grabación. 100% local, sin créditos.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 4173"
+  },
+  "dependencies": {
+    "lucide-react": "^0.575.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.2.0",
+    "vite": "^8.1.5"
+  }
+}
