@@ -61,6 +61,16 @@ export function Control({ className = "", variant = "ghost", ...props }) {
   return <button data-nav className={`btn ${cls} ${className}`} {...props} />;
 }
 
+export const MENU_LOOKS = [
+  { id: "classic", label: "Clásico · DVD 2003" },
+  { id: "modern", label: "Moderno · Streaming" },
+  { id: "y2k", label: "Y2K · Retro 2000" },
+  { id: "vhs", label: "VHS · Videoclub 90s" },
+  { id: "bluray", label: "Blu-ray · Cristal" },
+  { id: "cinema", label: "Cine · Cartelera 35mm" },
+  { id: "neon", label: "Neón · Arcade 80s" },
+];
+
 /* ---------- cabecera global ---------- */
 export function Header({ route, onNavigate, tv, onToggleTv, look, onLook }) {
   const links = [
@@ -91,9 +101,11 @@ export function Header({ route, onNavigate, tv, onToggleTv, look, onLook }) {
             value={look}
             onChange={(e) => onLook(e.target.value)}
           >
-            <option value="classic">Clásico</option>
-            <option value="y2k">Y2K</option>
-            <option value="modern">Moderno</option>
+            {MENU_LOOKS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
           </select>
           <button
             data-nav

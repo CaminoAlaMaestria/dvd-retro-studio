@@ -232,12 +232,280 @@ input, select, textarea { font-family: inherit; color: var(--foreground); }
 .page-head h1 { font-family: var(--font-display); font-size: clamp(28px, 4vw, 42px); margin: 6px 0 4px; color: var(--gold); }
 .hidden-file { display: none; }
 
-/* ---------- apariencia Y2K / moderna ---------- */
-.look-y2k .dvd-stage { margin: 18px auto; border: 8px solid #2a3350; border-radius: 12px; max-width: 1220px; background: var(--panel); min-height: 660px; box-shadow: var(--glow-gold); }
-.look-y2k .movie-title { border: 3px inset #3a4767; background: linear-gradient(180deg, #0e2a4a, #123a66); padding: 18px; max-width: 620px; }
-.look-y2k .movie-title h1 { font-family: var(--font-mono); font-size: clamp(28px, 4vw, 44px); color: #bfe9ff; text-shadow: 0 0 8px rgba(111,211,242,.7); }
-.look-modern .movie-title h1 { font-family: var(--font-sans); text-transform: none; color: var(--foreground); }
-.look-modern .movie-actions .btn { border-radius: 10px; }
+/* ---------- apariencias de menú DVD (7 estilos diferenciados) ---------- */
+.look-badge {
+  display: inline-block; margin: 0 0 10px; padding: 4px 10px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .16em;
+  border-radius: 6px; border: 1px solid var(--gold-soft);
+  color: var(--gold); background: rgba(5,7,13,.65);
+}
+
+/* 1. CLÁSICO · DVD Coleccionista 2003 (lista de reproductor + filetes dorados) */
+.dvd-stage.look-classic {
+  background: radial-gradient(900px 540px at 78% 12%, rgba(227,193,92,.14), transparent 62%);
+}
+.dvd-stage.look-classic .dvd-inner {
+  border-left: 1px solid rgba(227,193,92,.22);
+  border-right: 1px solid rgba(227,193,92,.22);
+}
+.dvd-stage.look-classic .movie-title {
+  border-top: 2px solid var(--gold-soft);
+  border-bottom: 1px solid var(--gold-soft);
+  padding: 20px 0 22px;
+}
+.dvd-stage.look-classic .movie-title h1 {
+  color: #f6df98;
+  text-shadow: 0 4px 26px rgba(227,193,92,.28);
+  letter-spacing: .02em;
+}
+.dvd-stage.look-classic .movie-actions {
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 300px;
+  gap: 8px;
+}
+.dvd-stage.look-classic .movie-actions .btn {
+  justify-content: flex-start;
+  border-radius: 6px;
+  padding: 11px 18px;
+  border-color: rgba(227,193,92,.28);
+  background: rgba(13,18,32,.78);
+  color: var(--foreground);
+}
+.dvd-stage.look-classic .movie-actions .btn::before {
+  content: "▸";
+  color: var(--gold);
+  opacity: .55;
+  margin-right: 2px;
+}
+.dvd-stage.look-classic .movie-actions .btn:hover::before,
+.dvd-stage.look-classic .movie-actions .btn:focus::before { opacity: 1; }
+.dvd-stage.look-classic .movie-actions .btn-gold {
+  background: linear-gradient(90deg, rgba(227,193,92,.26), rgba(227,193,92,.08));
+  border-color: var(--gold);
+  color: #f7e2a0;
+}
+.dvd-stage.look-classic .chapter-card {
+  border: 2px double rgba(227,193,92,.48);
+  border-radius: 6px;
+}
+
+/* 2. MODERNO · Streaming / Minimalista (pantalla limpia, glassmorphism, carril horizontal) */
+.dvd-stage.look-modern {
+  --gold: #ffffff;
+  --gold-soft: rgba(255,255,255,.14);
+}
+.dvd-stage.look-modern .dvd-backdrop img { opacity: .65; filter: saturate(1.08); }
+.dvd-stage.look-modern .dvd-backdrop::after {
+  background: linear-gradient(90deg, rgba(5,7,13,.92) 0%, rgba(5,7,13,.35) 65%), linear-gradient(0deg, var(--background) 5%, transparent 65%);
+}
+.dvd-stage.look-modern .movie-title h1 {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: #ffffff;
+}
+.dvd-stage.look-modern .movie-actions .btn {
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  background: rgba(255,255,255,.1);
+  border: 1px solid rgba(255,255,255,.16);
+  color: #fff;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 14px;
+}
+.dvd-stage.look-modern .movie-actions .btn-gold {
+  background: #ffffff;
+  color: #05070d;
+  border-color: #ffffff;
+}
+.dvd-stage.look-modern .panel {
+  background: rgba(14,19,32,.56);
+  backdrop-filter: blur(16px);
+  border-color: rgba(255,255,255,.14);
+  border-radius: 18px;
+}
+.dvd-stage.look-modern .chapter-strip {
+  display: flex;
+  overflow-x: auto;
+  gap: 14px;
+  padding-bottom: 8px;
+  scroll-snap-type: x proximity;
+}
+.dvd-stage.look-modern .chapter-card {
+  flex: 0 0 230px;
+  scroll-snap-align: start;
+  border-color: rgba(255,255,255,.14);
+  background: rgba(15,20,34,.7);
+  border-radius: 14px;
+}
+.dvd-stage.look-modern .chapter-card .num {
+  background: rgba(255,255,255,.16);
+  backdrop-filter: blur(8px);
+  color: #fff;
+}
+
+/* 3. Y2K · Retro 2000 (marco metálico azul + caja biselada + mono cian) */
+.dvd-stage.look-y2k {
+  margin: 18px auto;
+  border: 8px solid #2d3b5c;
+  border-radius: 14px;
+  max-width: 1240px;
+  background: linear-gradient(180deg, #0b1326, #070b18);
+  min-height: 660px;
+  box-shadow: 0 0 0 2px #5872a8, var(--glow-gold);
+}
+.dvd-stage.look-y2k .look-badge {
+  background: #0d2e54;
+  border-color: var(--cyan);
+  color: #bfe9ff;
+}
+.dvd-stage.look-y2k .movie-title {
+  border: 3px inset #4c6496;
+  background: linear-gradient(180deg, #0d2b4e, #134173);
+  padding: 20px;
+  max-width: 640px;
+}
+.dvd-stage.look-y2k .movie-title h1 {
+  font-family: var(--font-mono);
+  font-size: clamp(28px, 4vw, 44px);
+  color: #bfe9ff;
+  text-shadow: 0 0 10px rgba(111,211,242,.75);
+}
+.dvd-stage.look-y2k .movie-actions .btn {
+  border-radius: 4px;
+  border: 2px outset #5874ad;
+}
+
+/* 4. VHS · Videoclub 90s / CRT (scanlines, verde fósforo, OSD recto) */
+.dvd-stage.look-vhs {
+  --gold: #8cff9b;
+  --cyan: #8cff9b;
+  --gold-soft: rgba(140,255,155,.4);
+  font-family: var(--font-mono);
+}
+.dvd-stage.look-vhs::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.26) 0 1px, transparent 1px 3px);
+}
+.dvd-stage.look-vhs .dvd-backdrop img { opacity: .4; filter: sepia(.3) hue-rotate(60deg) contrast(1.2); }
+.dvd-stage.look-vhs .look-badge {
+  border: 0; background: #0c3b15; color: #8cff9b; font-size: 13px; border-radius: 2px;
+}
+.dvd-stage.look-vhs .movie-title h1 {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  color: #e6ffe9;
+  text-shadow: 2px 0 #ff4d6d, -2px 0 #4df0ff;
+}
+.dvd-stage.look-vhs .movie-actions .btn,
+.dvd-stage.look-vhs .panel,
+.dvd-stage.look-vhs .chapter-card {
+  border-radius: 2px;
+  border-color: rgba(140,255,155,.45);
+}
+.dvd-stage.look-vhs .movie-actions .btn-gold {
+  background: #8cff9b; color: #051408;
+}
+.dvd-stage.look-vhs .chapter-card {
+  border-top: 6px solid #e3c15c;
+}
+
+/* 5. BLU-RAY · Cristal / XMB (azul cobalto luminoso + cristal translúcido) */
+.dvd-stage.look-bluray {
+  --gold: #8fd3ff;
+  --cyan: #bfe9ff;
+  --gold-soft: rgba(120,195,255,.4);
+  background:
+    radial-gradient(900px 480px at 75% 8%, rgba(40,120,255,.35), transparent 62%),
+    radial-gradient(700px 420px at 15% 85%, rgba(0,180,255,.18), transparent 60%),
+    #03091a;
+}
+.dvd-stage.look-bluray .look-badge {
+  background: rgba(18,52,110,.7); border-color: #7cc4ff; color: #d8f0ff;
+}
+.dvd-stage.look-bluray .movie-title h1 {
+  font-family: var(--font-sans);
+  font-weight: 300;
+  letter-spacing: .04em;
+  color: #e8f5ff;
+  text-shadow: 0 0 28px rgba(80,175,255,.65);
+}
+.dvd-stage.look-bluray .panel,
+.dvd-stage.look-bluray .chapter-card {
+  background: rgba(10,28,64,.55);
+  backdrop-filter: blur(14px);
+  border-color: rgba(130,205,255,.38);
+}
+.dvd-stage.look-bluray .movie-actions .btn { border-radius: 14px; }
+.dvd-stage.look-bluray .movie-actions .btn-gold {
+  background: linear-gradient(180deg, #9ad4ff, #4ca2ff);
+  color: #031126;
+}
+
+/* 6. CINE · Cartelera 35mm (terciopelo burdeos, marquesina y perforaciones) */
+.dvd-stage.look-cinema {
+  --gold: #f5d487;
+  --gold-soft: rgba(245,212,135,.45);
+  background: radial-gradient(ellipse at 50% 0%, rgba(145,20,42,.5), #090306 74%);
+}
+.dvd-stage.look-cinema .dvd-backdrop img { opacity: .35; filter: sepia(.35) contrast(1.1); }
+.dvd-stage.look-cinema .movie-title {
+  border: 2px double rgba(245,212,135,.55);
+  background: rgba(30,6,12,.72);
+  padding: 22px;
+  border-radius: 8px;
+}
+.dvd-stage.look-cinema .look-badge {
+  background: #420b17; border-color: #f5d487; color: #ffe8b3;
+}
+.dvd-stage.look-cinema .chapter-strip {
+  padding: 18px 10px;
+  background: #0d0608;
+  border-top: 8px dashed rgba(245,212,135,.45);
+  border-bottom: 8px dashed rgba(245,212,135,.45);
+  border-radius: 4px;
+}
+.dvd-stage.look-cinema .chapter-card {
+  border-color: rgba(245,212,135,.4);
+  background: #1a090e;
+}
+
+/* 7. NEÓN · Arcade Synthwave 80s (magenta + cian + rejilla) */
+.dvd-stage.look-neon {
+  --gold: #ff66d9;
+  --cyan: #57f0ff;
+  --gold-soft: rgba(255,102,217,.45);
+  background:
+    linear-gradient(rgba(87,240,255,.08) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(255,102,217,.08) 1px, transparent 1px) 0 0 / 48px 48px,
+    radial-gradient(900px 500px at 50% 10%, rgba(130,25,180,.38), #070414 70%);
+}
+.dvd-stage.look-neon .look-badge {
+  background: rgba(45,8,65,.8); border-color: #ff66d9; color: #ff9ce8;
+}
+.dvd-stage.look-neon .movie-title h1 {
+  font-family: var(--font-sans);
+  font-weight: 900;
+  font-style: italic;
+  text-transform: uppercase;
+  color: #fff;
+  text-shadow: 0 0 12px #ff3ec9, 0 0 32px rgba(87,240,255,.65);
+}
+.dvd-stage.look-neon .movie-actions .btn {
+  border-radius: 6px;
+  box-shadow: 0 0 14px rgba(255,102,217,.2);
+}
+.dvd-stage.look-neon .movie-actions .btn-gold {
+  background: linear-gradient(90deg, #ff4fd8, #57f0ff);
+  color: #090414;
+}
+.dvd-stage.look-neon .panel,
+.dvd-stage.look-neon .chapter-card {
+  background: rgba(16,8,34,.78);
+  box-shadow: 0 0 18px rgba(255,79,216,.15);
+}
 
 /* ---------- MODO TV (10-foot UI) ---------- */
 html.tv { font-size: 21px; }

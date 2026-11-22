@@ -1,11 +1,21 @@
 import { useState } from "react";
-import { Clapperboard, Film, Images, Mic, Play, Scissors, Share2 } from "lucide-react";
-import { Control, GalleryOverlay, RemasterPanel, Remote, Thumb } from "../components.jsx";
+import { Clapperboard, Film, Images, Mic, Palette, Play, Scissors, Share2 } from "lucide-react";
+import { Control, GalleryOverlay, MENU_LOOKS, RemasterPanel, Remote, Thumb } from "../components.jsx";
 import { useSrc, fmtTime, toast } from "../lib/media.js";
 import { saveMovie } from "../lib/db.js";
 
+const LOOK_BADGES = {
+  classic: "EDICIÓN ESPECIAL DVD · DOLBY DIGITAL",
+  modern: "",
+  y2k: "DISC_01.ISO // INTERACTIVE MENU",
+  vhs: "▶ PLAY · SP · HI-FI STEREO",
+  bluray: "BD-LIVE · FULL HD 1080p",
+  cinema: "★ ESTRENO EN SALA 35 MM ★",
+  neon: "SYNTH ARCHIVE · 1984 EDITION",
+};
+
 /** Portada estilo menú DVD: película actual, capítulos y remaster. */
-export function Home({ movies, slideshows, currentId, onSelect, navigate, onShare, look, tv, onToggleTv }) {
+export function Home({ movies, slideshows, currentId, onSelect, navigate, onShare, look, onLook, tv, onToggleTv }) {
   const movie = movies.find((m) => m.id === currentId) ?? movies[0];
   const [remaster, setRemaster] = useState(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -59,6 +69,7 @@ export function Home({ movies, slideshows, currentId, onSelect, navigate, onShar
 
         <div className="dvd-main-grid">
           <section className="movie-title">
+            {LOOK_BADGES[look] && <p className="look-badge">{LOOK_BADGES[look]}</p>}
             <p className="kicker text-cyan">{movie.kicker || "Presentación"}</p>
             <h1>{movie.title}</h1>
             <p className="text-muted" style={{ margin: "4px 0 0" }}>
@@ -127,6 +138,19 @@ export function Home({ movies, slideshows, currentId, onSelect, navigate, onShar
             </div>
           </section>
         )}
+
+        <section style={{ marginTop: 28 }}>
+          <p className="kicker" style={{ margin: "0 0 10px" }}>
+            <Palette style={{ width: 13, height: 13, verticalAlign: -2 }} /> Estilo del menú DVD
+          </p>
+          <div className="row wrap" style={{ gap: 8 }}>
+            {MENU_LOOKS.map((m) => (
+              <button key={m.id} data-nav className="chip" data-on={look === m.id} onClick={() => onLook?.(m.id)} style={{ fontSize: 13 }}>
+                {m.label.split(" · ")[0]}
+              </button>
+            ))}
+          </div>
+        </section>
 
         <Remote tv={tv} onToggleTv={onToggleTv} />
 

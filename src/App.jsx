@@ -102,6 +102,7 @@ export default function App() {
           navigate={navigate}
           onShare={(id) => openShare(id, null, "movie")}
           look={look}
+          onLook={setLook}
           tv={tv}
           onToggleTv={() => setTv((v) => !v)}
         />

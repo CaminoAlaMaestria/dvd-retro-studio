@@ -18,11 +18,11 @@
 
 ## Última sesión
 
-- **(Arena — revisión profunda y arreglos en Editor/Reproductor)**:
-  - **Editor (`src/views/Editor.jsx`)**: añadida subida/cambio de **película principal** y **carátula**; selector de **pases vinculados**; botones para reordenar capítulos (↑/↓), añadir escenas desde foto, cambiar foto de capítulo y guardado automático; corregido el bug que reseteaba `time` a `0` al seleccionar capítulos y los botones rotos `downloadVideo`/`downloadZip`.
-  - **Reproductor (`src/views/Player.jsx`)**: sincronización del capítulo activo con el tiempo de reproducción, `onLoadedMetadata` seek al cambiar de clip/capítulo, y temporizador automático para capítulos de solo foto.
-  - **Biblioteca (`src/views/Biblioteca.jsx`)**: botón «Nueva película» para crear un disco desde cero y abrirlo directo en el Editor.
-  - **Exportador / Media / Componentes (`src/lib/exporter.js`, `src/lib/media.js`, `src/components.jsx`)**: `renderMovieVideo` unificado con `exportForTv` (soporta clips, vídeo principal y fotos), `onLoadedMetadata` en `RemasterView` y fallback en `videoPoster`. Build en verde sin advertencias.
+- **(Arena — 7 apariencias diferenciadas de menú DVD)**:
+  - Corregido el bug de selector `.look-* .dvd-stage` → `.dvd-stage.look-*` en `src/styles.css`.
+  - Rediseñados **Clásico · DVD 2003** (lista de reproductor en columna con `▸`, filetes dorados) y **Moderno · Streaming** (sin adornos dorados, glassmorphism, carril horizontal de capítulos).
+  - Mejorado **Y2K · Retro 2000** y añadidos **4 menús nuevos**: **VHS · Videoclub 90s**, **Blu-ray · Cristal**, **Cine · Cartelera 35mm** y **Neón · Arcade 80s**.
+  - Añadido selector rápido de estilos en `Home.jsx` y opciones completas en `Header` (`src/components.jsx`). Build en verde.
 
 ## Siguiente paso sugerido
 
