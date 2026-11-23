@@ -18,11 +18,12 @@
 
 ## Última sesión
 
-- **(Arena — 7 apariencias diferenciadas de menú DVD)**:
-  - Corregido el bug de selector `.look-* .dvd-stage` → `.dvd-stage.look-*` en `src/styles.css`.
-  - Rediseñados **Clásico · DVD 2003** (lista de reproductor en columna con `▸`, filetes dorados) y **Moderno · Streaming** (sin adornos dorados, glassmorphism, carril horizontal de capítulos).
-  - Mejorado **Y2K · Retro 2000** y añadidos **4 menús nuevos**: **VHS · Videoclub 90s**, **Blu-ray · Cristal**, **Cine · Cartelera 35mm** y **Neón · Arcade 80s**.
-  - Añadido selector rápido de estilos en `Home.jsx` y opciones completas en `Header` (`src/components.jsx`). Build en verde.
+- **(Arena — Google Play Store PWA/TWA + Responsive Móvil/Tablet/TV/PC)**:
+  - Añadido `public/sw.js` (Service Worker offline-first) registrado en `src/main.jsx`.
+  - Actualizado `public/manifest.webmanifest` con iconos separados `any` y `maskable` (`public/icon-maskable-512.png`), capturas (`public/screenshots/wide.png` y `narrow.png`), `id`, `scope`, `orientation: "any"` y `categories`.
+  - Añadidos `public/privacidad.html`, `public/.well-known/assetlinks.json` y guía `PLAYSTORE.md`.
+  - Mejorado `index.html` (`viewport-fit=cover`, meta tags móvil/Apple PWA).
+  - Corregido el redimensionamiento en `src/styles.css`, `src/components.jsx`, `src/views/Editor.jsx` y `src/views/Studio.jsx`: cabecera en 2 filas sin desbordamiento bajo 860 px, áreas seguras (`safe-area-inset-*`), `touch-action: none` en faders/rangos, orden del editor en móvil/tablet (vídeo primero), `.two-col` adaptable, Modo TV (10-foot UI) ampliado y guardas de `getDisplayMedia`/`MediaRecorder` para Android WebView.
 
 ## Siguiente paso sugerido
 

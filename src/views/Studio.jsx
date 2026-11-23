@@ -82,8 +82,19 @@ export function Studio({ navigate }) {
       camStreamRef.current?.getTracks().forEach((t) => t.stop());
       let videoStream;
       if (mode === "screen") {
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+          toast("La grabación de pantalla no está disponible en este dispositivo móvil; usa Cámara.", "error");
+          setSource("camera");
+          setBusy(false);
+          return;
+        }
         videoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       } else {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          toast("Tu navegador no permite acceso a la cámara aquí.", "error");
+          setBusy(false);
+          return;
+        }
         videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
       }
       camStreamRef.current = videoStream;
@@ -151,7 +162,10 @@ export function Studio({ navigate }) {
     const dest = mixer.recordDestination();
     mixer.connectRecord(dest);
     const combined = new MediaStream([...cam.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-    const rec = new MediaRecorder(combined, { mimeType: MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm" });
+    const mime = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find((t) =>
+      typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t)
+    );
+    const rec = mime ? new MediaRecorder(combined, { mimeType: mime }) : new MediaRecorder(combined);
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = async () => {

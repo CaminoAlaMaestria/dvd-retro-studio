@@ -639,7 +639,7 @@ export function Editor({ movieId, navigate, onShare }) {
             <h3 className="font-display text-gold" style={{ margin: "0 0 12px", fontSize: 16, fontVariant: "small-caps" }}>
               Exportar corte
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div className="two-col">
               <label style={{ fontSize: 13 }}>
                 Inicio (s)
                 <input type="number" className="field" value={cutStart} min="0" onChange={(e) => setCutStart(Number(e.target.value))} />
@@ -649,7 +649,7 @@ export function Editor({ movieId, navigate, onShare }) {
                 <input type="number" className="field" value={cutEnd} min="0" onChange={(e) => setCutEnd(Number(e.target.value))} />
               </label>
             </div>
-            <div className="row" style={{ marginTop: 12 }}>
+            <div className="row wrap" style={{ marginTop: 12 }}>
               <Control data-nav className="btn-gold" onClick={exportCut} disabled={busy}>
                 {busy ? "Exportando…" : "Exportar corte como película nueva"}
               </Control>
@@ -660,7 +660,7 @@ export function Editor({ movieId, navigate, onShare }) {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 16 }}>
+        <div className="two-col" style={{ marginTop: 16 }}>
           <label style={{ fontSize: 13 }}>
             Título de la película
             <input className="field" style={{ marginTop: 6 }} value={draft.title} onChange={(e) => update({ title: e.target.value })} />

@@ -93,7 +93,7 @@ export function Header({ route, onNavigate, tv, onToggleTv, look, onLook }) {
             </a>
           ))}
         </nav>
-        <div className="row" style={{ gap: 6 }}>
+        <div className="row header-actions" style={{ gap: 6 }}>
           <select
             aria-label="Apariencia del menú"
             className="field"
