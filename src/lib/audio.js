@@ -21,8 +21,11 @@ export class Mixer {
     this.master.gain.value = 0.9;
     this.masterAnalyser = this.ctx.createAnalyser();
     this.masterAnalyser.fftSize = 512;
+    this.monitor = this.ctx.createGain();
+    this.monitor.gain.value = 1;
     this.master.connect(this.masterAnalyser);
-    this.master.connect(this.ctx.destination);
+    this.master.connect(this.monitor);
+    this.monitor.connect(this.ctx.destination);
 
     this.ch = {};
     for (const id of CHANNELS) {
@@ -33,9 +36,13 @@ export class Mixer {
       input.connect(fader);
       fader.connect(analyser);
       analyser.connect(this.master);
-      this.ch[id] = { input, fader, analyser, volume: 0.8, duck: 1, muted: false, solo: false, sources: [] };
+      this.ch[id] = { input, fader, analyser, volume: 0.8, duck: 1, muted: false, solo: false, sources: [], streamSources: [] };
     }
     this.applySoloMute();
+  }
+
+  setMonitor(on) {
+    this.monitor.gain.setTargetAtTime(on ? 1 : 0, this.ctx.currentTime, 0.03);
   }
 
   applySoloMute() {
@@ -86,9 +93,26 @@ export class Mixer {
 
   /** Conecta el micrófono en directo al canal de voz. */
   connectMic(stream) {
+    return this.replaceStreamSource(stream, "voice");
+  }
+
+  /** Reemplaza la fuente MediaStream de un canal (p. ej. micro, capturadora VHS o audio de pantalla). */
+  replaceStreamSource(stream, channelId = "voice") {
+    const c = this.ch[channelId];
+    if (!c) return null;
+    for (const prev of c.streamSources) {
+      try {
+        prev.disconnect();
+      } catch {
+        /* ya desconectado */
+      }
+    }
+    c.streamSources = [];
+    if (!stream || !stream.getAudioTracks().length) return null;
     const src = this.ctx.createMediaStreamSource(stream);
-    src.connect(this.ch.voice.input);
-    this.ch.voice.sources.push(src);
+    src.connect(c.input);
+    c.streamSources.push(src);
+    c.sources.push(src);
     return src;
   }
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Camera, Clapperboard, Mic, Monitor, Music, Play, Plus, Square, Trash2, Upload, Video } from "lucide-react";
+import { Camera, Clapperboard, Disc, Mic, Monitor, Music, PictureInPicture2, Play, Plus, RefreshCw, Square, Trash2, Upload, Video, Volume2, VolumeX } from "lucide-react";
 import { Control, Thumb } from "../components.jsx";
 import { fmtTime, resolveSrc, toast, videoPoster } from "../lib/media.js";
 import { putMedia, saveMovie, uid } from "../lib/db.js";
@@ -8,11 +8,27 @@ import { startFreeMusic } from "../lib/music.js";
 import { DEFAULT_REMASTER, FREE_TRACKS, newMovie } from "../lib/types.js";
 
 /**
- * Estudio de grabación: cámara/pantalla + fotos + consola multipista
- * (voz en directo, voz en off y música por separado + ducking automático).
+ * Estudio de grabación:
+ * - Cámara (con selector de cámara trasera/frontal y dispositivos USB)
+ * - Pantalla (PC)
+ * - Pantalla + Cámara en vivo (PiP para directos)
+ * - Captura VHS analógica (capturadora USB vídeo + audio de línea sin filtros + 4:3)
+ * + Consola multipista (Voz/Entrada, Voz en off/Sistema y Música + ducking).
  */
 export function Studio({ navigate }) {
-  const [source, setSource] = useState("camera");
+  const isTouch = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
+  const canScreen = typeof navigator !== "undefined" && !!navigator.mediaDevices?.getDisplayMedia;
+
+  const [source, setSource] = useState("camera"); // camera | screen | pip | vhs
+  const [facing, setFacing] = useState(isTouch ? "environment" : "user");
+  const [cameras, setCameras] = useState([]);
+  const [mics, setMics] = useState([]);
+  const [selectedCamId, setSelectedCamId] = useState("");
+  const [selectedMicId, setSelectedMicId] = useState("");
+  const [pipCorner, setPipCorner] = useState("br"); // br | bl | tr | tl
+  const [aspect, setAspect] = useState("16/9"); // 16/9 | 4/3
+  const [monitorOn, setMonitorOn] = useState(false);
+
   const [filter, setFilter] = useState("clean");
   const [duck, setDuck] = useState(false);
   const [devicesOn, setDevicesOn] = useState(false);
@@ -23,13 +39,24 @@ export function Studio({ navigate }) {
   const [music, setMusic] = useState({ kind: "free", trackId: "amanecer" });
   const [mix, setMix] = useState({ voice: 0.8, voiceover: 0.8, music: 0.6, master: 0.9, muted: {}, solo: {} });
   const [previewTake, setPreviewTake] = useState(null);
+  const [takeUrl, setTakeUrl] = useState(null);
 
-  const previewRef = useRef(null);
+  const previewRef = useRef(null); // vídeo principal (cámara, pantalla o VHS)
+  const pipCamRef = useRef(null); // cámara secundaria en modo Pantalla + Cámara
+  const pipCanvasRef = useRef(null); // compositor en directo para Pantalla + Cámara
+  const pipTimerRef = useRef(null);
+
   const camStreamRef = useRef(null);
+  const screenStreamRef = useRef(null);
   const micStreamRef = useRef(null);
   const mixerRef = useRef(null);
   const duckRef = useRef(duck);
   duckRef.current = duck;
+  const pipCornerRef = useRef(pipCorner);
+  pipCornerRef.current = pipCorner;
+  const filterRef = useRef(filter);
+  filterRef.current = filter;
+
   const musicHandleRef = useRef(null);
   const musicAudioRef = useRef(null);
   const voiceAudioRef = useRef(null);
@@ -38,12 +65,38 @@ export function Studio({ navigate }) {
   const voiceInput = useRef(null);
 
   const ensureMixer = useCallback(() => {
-    if (!mixerRef.current) mixerRef.current = new Mixer();
+    if (!mixerRef.current) {
+      mixerRef.current = new Mixer();
+      mixerRef.current.setMonitor(monitorOn);
+    }
     getAudioCtx().resume();
     return mixerRef.current;
+  }, [monitorOn]);
+
+  const refreshDevices = useCallback(async () => {
+    if (!navigator.mediaDevices?.enumerateDevices) return;
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const vids = list.filter((d) => d.kind === "videoinput");
+      const auds = list.filter((d) => d.kind === "audioinput");
+      setCameras(vids);
+      setMics(auds);
+    } catch {
+      /* navegador sin soporte */
+    }
   }, []);
 
-  /* Medidores de nivel + ducking automático (actualización directa sin re-render) */
+  useEffect(() => {
+    refreshDevices();
+    navigator.mediaDevices?.addEventListener?.("devicechange", refreshDevices);
+    return () => navigator.mediaDevices?.removeEventListener?.("devicechange", refreshDevices);
+  }, [refreshDevices]);
+
+  useEffect(() => {
+    mixerRef.current?.setMonitor(monitorOn);
+  }, [monitorOn]);
+
+  /* Medidores de nivel + ducking automático */
   useEffect(() => {
     let raf;
     const loop = () => {
@@ -65,66 +118,256 @@ export function Studio({ navigate }) {
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  const stopPipLoop = useCallback(() => {
+    if (pipTimerRef.current) {
+      clearInterval(pipTimerRef.current);
+      pipTimerRef.current = null;
+    }
+  }, []);
+
+  const stopAllStreams = useCallback(() => {
+    stopPipLoop();
+    camStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    micStreamRef.current?.getTracks().forEach((t) => t.stop());
+    camStreamRef.current = null;
+    screenStreamRef.current = null;
+    micStreamRef.current = null;
+    if (previewRef.current) previewRef.current.srcObject = null;
+    if (pipCamRef.current) pipCamRef.current.srcObject = null;
+  }, [stopPipLoop]);
+
   /* Limpieza al salir */
   useEffect(() => {
     return () => {
       musicHandleRef.current?.stop();
-      camStreamRef.current?.getTracks().forEach((t) => t.stop());
-      micStreamRef.current?.getTracks().forEach((t) => t.stop());
+      stopAllStreams();
       mixerRef.current?.dispose();
     };
-  }, []);
+  }, [stopAllStreams]);
 
-  const enableDevices = async (mode = source) => {
+  /* Compositor en vivo para Pantalla + Cámara (PiP) */
+  const startPipCompositor = useCallback(() => {
+    stopPipLoop();
+    const cv = pipCanvasRef.current;
+    const scrV = previewRef.current;
+    const camV = pipCamRef.current;
+    if (!cv || !scrV || !camV) return;
+    cv.width = 1280;
+    cv.height = 720;
+    const ctx = cv.getContext("2d");
+
+    pipTimerRef.current = setInterval(() => {
+      if (!ctx) return;
+      const W = cv.width;
+      const H = cv.height;
+      ctx.fillStyle = "#05070d";
+      ctx.fillRect(0, 0, W, H);
+
+      const flt =
+        filterRef.current === "vhs"
+          ? "sepia(.3) contrast(1.15) saturate(1.15)"
+          : filterRef.current === "warm"
+            ? "sepia(.35) saturate(1.25) contrast(1.05)"
+            : "none";
+      ctx.filter = flt;
+
+      if (scrV.readyState >= 2 && scrV.videoWidth) {
+        const sr = scrV.videoWidth / scrV.videoHeight;
+        const dr = W / H;
+        let dw = W;
+        let dh = H;
+        let dx = 0;
+        let dy = 0;
+        if (sr > dr) {
+          dh = W / sr;
+          dy = (H - dh) / 2;
+        } else {
+          dw = H * sr;
+          dx = (W - dw) / 2;
+        }
+        ctx.drawImage(scrV, dx, dy, dw, dh);
+      }
+
+      if (camV.readyState >= 2 && camV.videoWidth) {
+        const pw = Math.round(W * 0.24);
+        const ph = Math.round(pw * (camV.videoHeight / camV.videoWidth));
+        const margin = 24;
+        const corner = pipCornerRef.current;
+        const px = corner.endsWith("l") ? margin : W - pw - margin;
+        const py = corner.startsWith("t") ? margin : H - ph - margin;
+
+        ctx.save();
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 16);
+        else ctx.rect(px, py, pw, ph);
+        ctx.clip();
+        ctx.drawImage(camV, px, py, pw, ph);
+        ctx.restore();
+
+        ctx.filter = "none";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#6fd3f2";
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(px, py, pw, ph, 16);
+        else ctx.rect(px, py, pw, ph);
+        ctx.stroke();
+      }
+      ctx.filter = "none";
+    }, 33);
+  }, [stopPipLoop]);
+
+  const buildVideoConstraint = (camId, facingMode, isVhs) => {
+    if (camId) return { deviceId: { exact: camId }, ...(isVhs ? { width: { ideal: 720 }, height: { ideal: 576 } } : {}) };
+    if (isVhs) return { width: { ideal: 720 }, height: { ideal: 576 } };
+    return { facingMode: { ideal: facingMode } };
+  };
+
+  const buildAudioConstraint = (micId, isVhs) => {
+    const raw = isVhs ? { echoCancellation: false, noiseSuppression: false, autoGainControl: false } : {};
+    return micId ? { deviceId: { exact: micId }, ...raw } : Object.keys(raw).length ? raw : true;
+  };
+
+  const enableDevices = async (
+    mode = source,
+    opts = {}
+  ) => {
+    const nextFacing = opts.facing ?? facing;
+    const camId = opts.camId !== undefined ? opts.camId : selectedCamId;
+    const micId = opts.micId !== undefined ? opts.micId : selectedMicId;
+
+    if ((mode === "screen" || mode === "pip") && !canScreen) {
+      toast("La captura de pantalla no está disponible en este dispositivo móvil; usa Cámara.", "error");
+      setSource("camera");
+      return;
+    }
+
     setBusy(true);
     setSource(mode);
-    try {
-      camStreamRef.current?.getTracks().forEach((t) => t.stop());
-      let videoStream;
-      if (mode === "screen") {
-        if (!navigator.mediaDevices?.getDisplayMedia) {
-          toast("La grabación de pantalla no está disponible en este dispositivo móvil; usa Cámara.", "error");
-          setSource("camera");
-          setBusy(false);
-          return;
-        }
-        videoStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-      } else {
-        if (!navigator.mediaDevices?.getUserMedia) {
-          toast("Tu navegador no permite acceso a la cámara aquí.", "error");
-          setBusy(false);
-          return;
-        }
-        videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: true });
-      }
-      camStreamRef.current = videoStream;
-      if (previewRef.current) previewRef.current.srcObject = videoStream;
+    if (mode === "vhs" && !opts.keepAspect) setAspect("4/3");
+    else if (mode !== "vhs" && !opts.keepAspect && aspect === "4/3") setAspect("16/9");
 
+    // En VHS activamos monitorización por defecto para oír la cinta; en cámara la dejamos opcional para evitar acoples
+    if (opts.autoMonitor !== false) {
+      const wantMon = mode === "vhs";
+      setMonitorOn(wantMon);
+      mixerRef.current?.setMonitor(wantMon);
+    }
+
+    try {
+      stopAllStreams();
       const mixer = ensureMixer();
-      // Si no tenemos micrófono conectado aún, conectamos el audio de cámara o pedimos mic aparte en modo pantalla
-      if (!micStreamRef.current) {
-        if (mode === "camera" && videoStream.getAudioTracks().length) {
-          micStreamRef.current = new MediaStream(videoStream.getAudioTracks());
-          mixer.connectMic(micStreamRef.current);
-        } else {
-          try {
-            micStreamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mixer.connectMic(micStreamRef.current);
-          } catch {
-            toast("Micrófono no disponible; puedes grabar sin voz");
-          }
+      const isVhs = mode === "vhs";
+
+      if (mode === "camera" || mode === "vhs") {
+        if (!navigator.mediaDevices?.getUserMedia) {
+          throw new Error("Tu navegador no permite acceso a la cámara o capturadora.");
         }
+        const videoStream = await navigator.mediaDevices.getUserMedia({
+          video: buildVideoConstraint(camId, nextFacing, isVhs),
+          audio: false,
+        });
+        camStreamRef.current = videoStream;
+        if (previewRef.current) previewRef.current.srcObject = videoStream;
+
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({
+            audio: buildAudioConstraint(micId, isVhs),
+          });
+          micStreamRef.current = audioStream;
+          mixer.replaceStreamSource(audioStream, "voice");
+        } catch {
+          mixer.replaceStreamSource(null, "voice");
+          toast(isVhs ? "Audio del VHS no conectado; selecciona su entrada de audio" : "Micrófono no disponible; puedes grabar sin voz");
+        }
+
+        videoStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+          setDevicesOn(false);
+          if (recording?.recorder?.state === "recording") recording.recorder.stop();
+        });
+      } else if (mode === "screen") {
+        const scrStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        screenStreamRef.current = scrStream;
+        if (previewRef.current) previewRef.current.srcObject = scrStream;
+
+        if (scrStream.getAudioTracks().length) {
+          mixer.replaceStreamSource(new MediaStream(scrStream.getAudioTracks()), "voiceover");
+        }
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraint(micId, false) });
+          micStreamRef.current = audioStream;
+          mixer.replaceStreamSource(audioStream, "voice");
+        } catch {
+          toast("Micrófono no disponible; se grabará el audio de pantalla");
+        }
+
+        scrStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+          setDevicesOn(false);
+          if (recording?.recorder?.state === "recording") recording.recorder.stop();
+        });
+      } else if (mode === "pip") {
+        const scrStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        screenStreamRef.current = scrStream;
+        if (previewRef.current) {
+          previewRef.current.srcObject = scrStream;
+          previewRef.current.play().catch(() => {});
+        }
+
+        // Cámara frontal/seleccionada simultánea en esquina (PiP)
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: buildVideoConstraint(camId, "user", false),
+          audio: false,
+        });
+        camStreamRef.current = camStream;
+        if (pipCamRef.current) {
+          pipCamRef.current.srcObject = camStream;
+          pipCamRef.current.play().catch(() => {});
+        }
+
+        if (scrStream.getAudioTracks().length) {
+          mixer.replaceStreamSource(new MediaStream(scrStream.getAudioTracks()), "voiceover");
+        }
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraint(micId, false) });
+          micStreamRef.current = audioStream;
+          mixer.replaceStreamSource(audioStream, "voice");
+        } catch {
+          toast("Micrófono no disponible; puedes grabar sin voz");
+        }
+
+        scrStream.getVideoTracks()[0]?.addEventListener("ended", () => {
+          stopPipLoop();
+          setDevicesOn(false);
+          if (recording?.recorder?.state === "recording") recording.recorder.stop();
+        });
+        startPipCompositor();
       }
-      videoStream.getVideoTracks()[0]?.addEventListener("ended", () => {
-        setDevicesOn(false);
-        if (recording?.recorder?.state === "recording") recording.recorder.stop();
-      });
+
+      await refreshDevices();
       setDevicesOn(true);
-      toast(mode === "screen" ? "Pantalla lista para grabar" : "Cámara y micrófono activos");
-    } catch {
-      toast("No se pudo acceder a la cámara o pantalla. Revisa los permisos.", "error");
+      const okMsg =
+        mode === "screen"
+          ? "Pantalla lista para grabar"
+          : mode === "pip"
+            ? "Directo listo: pantalla + cámara frontal activas"
+            : mode === "vhs"
+              ? "Capturadora VHS lista — dale al Play en tu reproductor"
+              : "Cámara y micrófono activos";
+      toast(okMsg);
+    } catch (err) {
+      toast(err?.message || "No se pudo acceder a la cámara, capturadora o pantalla. Revisa los permisos.", "error");
+      setDevicesOn(false);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const toggleFacing = () => {
+    const next = facing === "environment" ? "user" : "environment";
+    setFacing(next);
+    setSelectedCamId("");
+    if (devicesOn && (source === "camera" || source === "pip")) {
+      enableDevices(source, { facing: next, camId: "", autoMonitor: false });
     }
   };
 
@@ -157,27 +400,38 @@ export function Studio({ navigate }) {
   /* --- grabación de vídeo con la mezcla de audio --- */
   const startVideoTake = () => {
     const mixer = ensureMixer();
-    const cam = camStreamRef.current;
-    if (!cam) return toast("Activa primero la cámara", "error");
+    let videoTracks = [];
+    if (source === "pip") {
+      const cv = pipCanvasRef.current;
+      if (!cv) return toast("Activa primero Pantalla + Cámara", "error");
+      const cap = cv.captureStream(30);
+      videoTracks = cap.getVideoTracks();
+    } else {
+      const activeStream = source === "screen" ? screenStreamRef.current : camStreamRef.current;
+      if (!activeStream) return toast("Activa primero la fuente de vídeo", "error");
+      videoTracks = activeStream.getVideoTracks();
+    }
+    if (!videoTracks.length) return toast("No hay señal de vídeo activa", "error");
+
     const dest = mixer.recordDestination();
     mixer.connectRecord(dest);
-    const combined = new MediaStream([...cam.getVideoTracks(), ...dest.stream.getAudioTracks()]);
-    const mime = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find((t) =>
-      typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t)
+    const combined = new MediaStream([...videoTracks, ...dest.stream.getAudioTracks()]);
+    const mime = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(
+      (t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(t)
     );
     const rec = mime ? new MediaRecorder(combined, { mimeType: mime }) : new MediaRecorder(combined);
     const chunks = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
     rec.onstop = async () => {
       setRecording(null);
-      const blob = new Blob(chunks, { type: "video/webm" });
+      const blob = new Blob(chunks, { type: rec.mimeType || "video/webm" });
       const url = URL.createObjectURL(blob);
       try {
         const { blob: posterBlob, duration } = await videoPoster(url, 0.5);
         const take = {
           id: uid(),
           kind: "video",
-          title: `Toma ${takes.length + 1}`,
+          title: source === "vhs" ? `Cinta VHS ${takes.length + 1}` : source === "pip" ? `Directo ${takes.length + 1}` : `Toma ${takes.length + 1}`,
           mediaId: await putMedia(blob, "toma.webm"),
           posterMediaId: await putMedia(posterBlob, "toma.jpg"),
           duration,
@@ -196,28 +450,36 @@ export function Studio({ navigate }) {
   };
 
   const takePhoto = async () => {
-    const v = previewRef.current;
-    if (!v || !v.videoWidth) return toast("Activa primero la cámara", "error");
+    const srcEl = source === "pip" ? pipCanvasRef.current : previewRef.current;
+    const w = source === "pip" ? srcEl?.width : srcEl?.videoWidth;
+    const h = source === "pip" ? srcEl?.height : srcEl?.videoHeight;
+    if (!srcEl || !w || !h) return toast("Activa primero la cámara o captura", "error");
     const c = document.createElement("canvas");
-    c.width = v.videoWidth;
-    c.height = v.videoHeight;
+    c.width = w;
+    c.height = h;
     const ctx = c.getContext("2d");
-    ctx.filter = filter === "vhs" ? "sepia(.3) contrast(1.15) saturate(1.15)" : filter === "warm" ? "sepia(.35) saturate(1.25) contrast(1.05)" : "none";
-    ctx.drawImage(v, 0, 0);
-    c.toBlob(async (blob) => {
-      const take = {
-        id: uid(),
-        kind: "photo",
-        title: `Foto ${takes.length + 1}`,
-        mediaId: await putMedia(blob, "foto.jpg"),
-        posterMediaId: null,
-        duration: 0,
-        voiceOverMediaId: null,
-      };
-      setTakes((t) => [...t, take]);
-      setSelectedTake(take.id);
-      toast("Foto guardada como toma");
-    }, "image/jpeg", 0.9);
+    if (source !== "pip") {
+      ctx.filter = filter === "vhs" ? "sepia(.3) contrast(1.15) saturate(1.15)" : filter === "warm" ? "sepia(.35) saturate(1.25) contrast(1.05)" : "none";
+    }
+    ctx.drawImage(srcEl, 0, 0);
+    c.toBlob(
+      async (blob) => {
+        const take = {
+          id: uid(),
+          kind: "photo",
+          title: `Foto ${takes.length + 1}`,
+          mediaId: await putMedia(blob, "foto.jpg"),
+          posterMediaId: null,
+          duration: 0,
+          voiceOverMediaId: null,
+        };
+        setTakes((t) => [...t, take]);
+        setSelectedTake(take.id);
+        toast("Foto guardada como toma");
+      },
+      "image/jpeg",
+      0.9
+    );
   };
 
   /* --- voz en off para la toma seleccionada --- */
@@ -268,11 +530,11 @@ export function Studio({ navigate }) {
 
   const createMovie = async () => {
     if (!takes.length) return toast("Graba al menos una toma", "error");
-    const movie = newMovie("Mi película casera");
-    movie.kicker = "Producción propia";
-    movie.subtitle = "Grabada con el Estudio DVD Retro";
+    const movie = newMovie(source === "vhs" ? "Mi cinta VHS digitalizada" : "Mi película casera");
+    movie.kicker = source === "vhs" ? "Captura VHS Analógica" : "Producción propia";
+    movie.subtitle = source === "vhs" ? "Digitalizada desde reproductor VHS" : "Grabada con el Estudio DVD Retro";
     let acc = 0;
-    movie.chapters = takes.map((t, i) => {
+    movie.chapters = takes.map((t) => {
       const ch = {
         id: uid(),
         title: t.title,
@@ -315,27 +577,31 @@ export function Studio({ navigate }) {
   };
 
   const selected = takes.find((t) => t.id === selectedTake);
-  const previewUrl = previewTake ? (previewTake.kind === "photo" ? undefined : undefined) : undefined;
-  const [takeUrl, setTakeUrl] = useState(null);
   useEffect(() => {
     if (!previewTake || previewTake.kind !== "video") return setTakeUrl(null);
     resolveSrc({ mediaId: previewTake.mediaId }).then(setTakeUrl);
   }, [previewTake]);
-  const previewPhotoUrl = previewTake?.kind === "photo" ? undefined : undefined;
 
   return (
     <main className="studio-layout">
       <section style={{ minWidth: 0 }}>
+        {/* Selector de modo de fuente */}
         <div className="row wrap" style={{ justifyContent: "space-between", marginBottom: 10, gap: 8 }}>
-          <div className="row" style={{ gap: 6 }}>
+          <div className="row wrap" style={{ gap: 6 }}>
             <button data-nav className="chip" data-on={source === "camera"} disabled={!!recording} onClick={() => enableDevices("camera")}>
               <Camera style={{ width: 14, height: 14, verticalAlign: -2 }} /> Cámara
             </button>
             <button data-nav className="chip" data-on={source === "screen"} disabled={!!recording} onClick={() => enableDevices("screen")}>
               <Monitor style={{ width: 14, height: 14, verticalAlign: -2 }} /> Pantalla
             </button>
+            <button data-nav className="chip" data-on={source === "pip"} disabled={!!recording} onClick={() => enableDevices("pip")}>
+              <PictureInPicture2 style={{ width: 14, height: 14, verticalAlign: -2 }} /> Pantalla + Cámara
+            </button>
+            <button data-nav className="chip" data-on={source === "vhs"} disabled={!!recording} onClick={() => enableDevices("vhs")}>
+              <Disc style={{ width: 14, height: 14, verticalAlign: -2 }} /> Captura VHS
+            </button>
           </div>
-          <div className="row" style={{ gap: 6 }}>
+          <div className="row wrap" style={{ gap: 6 }}>
             {[
               ["clean", "Limpio"],
               ["vhs", "VHS 2004"],
@@ -347,7 +613,113 @@ export function Studio({ navigate }) {
             ))}
           </div>
         </div>
-        <div className="record-preview">
+
+        {/* Barra de selección de cámara / audio / opciones según modo */}
+        <div className="panel row wrap" style={{ padding: "10px 12px", marginBottom: 12, gap: 8, borderRadius: 14 }}>
+          {(source === "camera" || source === "pip") && (
+            <button
+              data-nav
+              type="button"
+              className="chip"
+              disabled={!!recording || busy}
+              onClick={toggleFacing}
+              style={{ padding: "6px 12px", fontSize: 12 }}
+              title="Alternar entre cámara trasera y frontal"
+            >
+              <RefreshCw style={{ width: 13, height: 13, verticalAlign: -2 }} /> {facing === "environment" ? "Cámara: Trasera" : "Cámara: Frontal"}
+            </button>
+          )}
+          {source !== "screen" && (
+            <select
+              aria-label={source === "vhs" ? "Capturadora de vídeo" : "Seleccionar cámara"}
+              className="field"
+              style={{ width: "auto", minWidth: 160, flex: "1 1 170px", padding: "6px 10px", fontSize: 12 }}
+              disabled={!!recording}
+              value={selectedCamId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setSelectedCamId(id);
+                if (devicesOn) enableDevices(source, { camId: id, autoMonitor: false });
+              }}
+            >
+              <option value="">{source === "vhs" ? "Capturadora USB (Auto)" : "Cámara (Auto)"}</option>
+              {cameras.map((c, i) => (
+                <option key={c.deviceId || i} value={c.deviceId}>
+                  {c.label || `Cámara ${i + 1}`}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            aria-label={source === "vhs" ? "Entrada de audio VHS" : "Seleccionar micrófono"}
+            className="field"
+            style={{ width: "auto", minWidth: 160, flex: "1 1 170px", padding: "6px 10px", fontSize: 12 }}
+            disabled={!!recording}
+            value={selectedMicId}
+            onChange={(e) => {
+              const id = e.target.value;
+              setSelectedMicId(id);
+              if (devicesOn) enableDevices(source, { micId: id, autoMonitor: false });
+            }}
+          >
+            <option value="">{source === "vhs" ? "Audio VHS / Línea (Auto)" : "Micrófono (Auto)"}</option>
+            {mics.map((m, i) => (
+              <option key={m.deviceId || i} value={m.deviceId}>
+                {m.label || `Audio ${i + 1}`}
+              </option>
+            ))}
+          </select>
+
+          {source === "pip" && (
+            <select
+              aria-label="Posición de cámara"
+              className="field"
+              style={{ width: "auto", padding: "6px 10px", fontSize: 12 }}
+              value={pipCorner}
+              onChange={(e) => setPipCorner(e.target.value)}
+            >
+              <option value="br">Cámara: Inf. derecha</option>
+              <option value="bl">Cámara: Inf. izquierda</option>
+              <option value="tr">Cámara: Sup. derecha</option>
+              <option value="tl">Cámara: Sup. izquierda</option>
+            </select>
+          )}
+
+          {source === "vhs" && (
+            <button
+              data-nav
+              type="button"
+              className="chip"
+              data-on={aspect === "4/3"}
+              onClick={() => setAspect((a) => (a === "4/3" ? "16/9" : "4/3"))}
+              style={{ padding: "6px 12px", fontSize: 12 }}
+            >
+              Formato {aspect === "4/3" ? "4:3 VHS" : "16:9"}
+            </button>
+          )}
+
+          <button
+            data-nav
+            type="button"
+            className="chip"
+            data-on={monitorOn}
+            onClick={() => setMonitorOn((v) => !v)}
+            style={{ padding: "6px 12px", fontSize: 12 }}
+            title="Escuchar la entrada de audio en directo por tus altavoces o auriculares"
+          >
+            {monitorOn ? <Volume2 style={{ width: 13, height: 13, verticalAlign: -2 }} /> : <VolumeX style={{ width: 13, height: 13, verticalAlign: -2 }} />}{" "}
+            {monitorOn ? "Escucha activa" : "Escucha mutada"}
+          </button>
+        </div>
+
+        {source === "vhs" && (
+          <p className="text-muted" style={{ fontSize: 12, margin: "0 0 10px" }}>
+            Conecta tu reproductor VHS al ordenador con una capturadora USB (RCA/Euroconector → USB), selecciona la capturadora en vídeo y su entrada USB en audio, pulsa Play en el VHS y graba sin filtros de voz.
+          </p>
+        )}
+
+        {/* Vista previa */}
+        <div className="record-preview" style={{ aspectRatio: aspect === "4/3" ? "4 / 3" : "16 / 9" }}>
           {previewTake ? (
             previewTake.kind === "photo" ? (
               <Thumb src={{ mediaId: previewTake.mediaId }} alt="" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
@@ -355,19 +727,57 @@ export function Studio({ navigate }) {
               <video ref={takeVideoRef} src={takeUrl} autoPlay muted={false} controls style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
             )
           ) : (
-            <video ref={previewRef} autoPlay muted playsInline className={`record-filter-${filter}`} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+            <>
+              <video
+                ref={previewRef}
+                autoPlay
+                muted
+                playsInline
+                className={source === "pip" ? "" : `record-filter-${filter}`}
+                style={
+                  source === "pip"
+                    ? { position: "fixed", left: -9999, top: 0, width: 2, height: 2, opacity: 0.01 }
+                    : { position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: source === "screen" || source === "vhs" ? "contain" : "cover" }
+                }
+              />
+              <video
+                ref={pipCamRef}
+                autoPlay
+                muted
+                playsInline
+                style={{ position: "fixed", left: -9999, top: 0, width: 2, height: 2, opacity: 0.01 }}
+              />
+              {source === "pip" && (
+                <canvas
+                  ref={pipCanvasRef}
+                  style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain" }}
+                />
+              )}
+            </>
           )}
           <div className="record-grid-overlay" aria-hidden />
           {recording && (
             <span className="row" style={{ position: "absolute", left: 12, top: 12, background: "rgba(5,7,13,.75)", borderRadius: 8, padding: "6px 12px", fontSize: 12 }}>
-              <span className="rec-dot" /> GRABANDO {recording.kind === "video" ? "VÍDEO" : "VOZ EN OFF"}
+              <span className="rec-dot" /> GRABANDO {recording.kind === "video" ? (source === "vhs" ? "VHS" : source === "pip" ? "DIRECTO" : "VÍDEO") : "VOZ EN OFF"}
             </span>
           )}
           {!devicesOn && !previewTake && (
             <div className="empty" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "rgba(5,7,13,.6)" }}>
               <div>
-                <Camera style={{ width: 40, height: 40, color: "var(--gold)" }} />
-                <p>Activa la cámara para empezar a grabar</p>
+                {source === "vhs" ? (
+                  <Disc style={{ width: 40, height: 40, color: "var(--gold)" }} />
+                ) : source === "pip" ? (
+                  <PictureInPicture2 style={{ width: 40, height: 40, color: "var(--gold)" }} />
+                ) : (
+                  <Camera style={{ width: 40, height: 40, color: "var(--gold)" }} />
+                )}
+                <p>
+                  {source === "vhs"
+                    ? "Conecta tu capturadora VHS USB y pulsa el botón dorado para previsualizar"
+                    : source === "pip"
+                      ? "Activa Pantalla + Cámara frontal para grabar tu directo"
+                      : "Activa la cámara para empezar a grabar"}
+                </p>
               </div>
             </div>
           )}
@@ -376,7 +786,23 @@ export function Studio({ navigate }) {
         <div className="row wrap" style={{ marginTop: 14, gap: 8 }}>
           {!devicesOn ? (
             <Control data-nav className="btn-gold btn-lg" onClick={() => enableDevices(source)} disabled={busy}>
-              {source === "screen" ? <Monitor /> : <Camera />} {source === "screen" ? "Compartir pantalla y micrófono" : "Activar cámara y micrófono"}
+              {source === "screen" ? (
+                <>
+                  <Monitor /> Compartir pantalla y micrófono
+                </>
+              ) : source === "pip" ? (
+                <>
+                  <PictureInPicture2 /> Activar Pantalla + Cámara
+                </>
+              ) : source === "vhs" ? (
+                <>
+                  <Disc /> Activar Captura VHS
+                </>
+              ) : (
+                <>
+                  <Camera /> Activar cámara y micrófono
+                </>
+              )}
             </Control>
           ) : recording?.kind === "video" ? (
             <Control data-nav className="btn-danger btn-lg" onClick={() => recording.recorder.stop()}>
@@ -384,7 +810,7 @@ export function Studio({ navigate }) {
             </Control>
           ) : (
             <Control data-nav className="btn-gold btn-lg" onClick={startVideoTake}>
-              <Video /> Grabar toma de vídeo
+              <Video /> {source === "vhs" ? "Grabar cinta VHS" : source === "pip" ? "Grabar directo" : "Grabar toma de vídeo"}
             </Control>
           )}
           <Control data-nav className="btn-outline-cyan btn-lg" onClick={takePhoto} disabled={!devicesOn}>
@@ -415,7 +841,7 @@ export function Studio({ navigate }) {
           />
           {previewTake && (
             <Control data-nav onClick={() => setPreviewTake(null)}>
-              Volver a la cámara
+              Volver al directo
             </Control>
           )}
         </div>
@@ -456,7 +882,7 @@ export function Studio({ navigate }) {
                 </Control>
               </div>
             ))}
-            {takes.length === 0 && <p className="text-muted" style={{ margin: 0 }}>Aún no hay tomas. Graba vídeo, haz fotos y añade voces en off.</p>}
+            {takes.length === 0 && <p className="text-muted" style={{ margin: 0 }}>Aún no hay tomas. Graba vídeo, digitaliza VHS, haz fotos y añade voces en off.</p>}
           </div>
           <Control data-nav className="btn-gold" onClick={createMovie} disabled={!takes.length} style={{ width: "100%", marginTop: 14, padding: "12px" }}>
             <Clapperboard /> Crear película con estas tomas
@@ -470,11 +896,11 @@ export function Studio({ navigate }) {
             Consola multipista
           </h2>
           <p className="text-muted" style={{ fontSize: 12, margin: "0 0 8px" }}>
-            Voz, voz en off y música por separado. La mezcla se graba con el vídeo.
+            Voz/VHS, voz en off/pantalla y música por separado. La mezcla se graba con el vídeo.
           </p>
           <div className="mixer">
-            <ChannelStrip id="voice" name="Voz" icon={<Mic />} mix={mix} levelRef={levelRefs} onVol={setVol} onMute={toggleMute} onSolo={toggleSolo} />
-            <ChannelStrip id="voiceover" name="Voz en off" icon={<Play />} mix={mix} levelRef={levelRefs} onVol={setVol} onMute={toggleMute} onSolo={toggleSolo} />
+            <ChannelStrip id="voice" name={source === "vhs" ? "Audio VHS" : "Voz"} icon={<Mic />} mix={mix} levelRef={levelRefs} onVol={setVol} onMute={toggleMute} onSolo={toggleSolo} />
+            <ChannelStrip id="voiceover" name={source === "screen" || source === "pip" ? "Pantalla" : "Voz en off"} icon={<Play />} mix={mix} levelRef={levelRefs} onVol={setVol} onMute={toggleMute} onSolo={toggleSolo} />
             <ChannelStrip id="music" name="Música" icon={<Music />} mix={mix} levelRef={levelRefs} onVol={setVol} onMute={toggleMute} onSolo={toggleSolo} />
           </div>
           <div className="master-strip">

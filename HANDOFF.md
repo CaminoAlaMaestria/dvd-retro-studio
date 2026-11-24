@@ -18,12 +18,10 @@
 
 ## Última sesión
 
-- **(Arena — Google Play Store PWA/TWA + Responsive Móvil/Tablet/TV/PC)**:
-  - Añadido `public/sw.js` (Service Worker offline-first) registrado en `src/main.jsx`.
-  - Actualizado `public/manifest.webmanifest` con iconos separados `any` y `maskable` (`public/icon-maskable-512.png`), capturas (`public/screenshots/wide.png` y `narrow.png`), `id`, `scope`, `orientation: "any"` y `categories`.
-  - Añadidos `public/privacidad.html`, `public/.well-known/assetlinks.json` y guía `PLAYSTORE.md`.
-  - Mejorado `index.html` (`viewport-fit=cover`, meta tags móvil/Apple PWA).
-  - Corregido el redimensionamiento en `src/styles.css`, `src/components.jsx`, `src/views/Editor.jsx` y `src/views/Studio.jsx`: cabecera en 2 filas sin desbordamiento bajo 860 px, áreas seguras (`safe-area-inset-*`), `touch-action: none` en faders/rangos, orden del editor en móvil/tablet (vídeo primero), `.two-col` adaptable, Modo TV (10-foot UI) ampliado y guardas de `getDisplayMedia`/`MediaRecorder` para Android WebView.
+- **(Arena — Mejoras en Estudio: selector de cámaras, Pantalla + Cámara PiP y Captura VHS analógica)**:
+  - `src/views/Studio.jsx`: selector completo de cámara (botón rápido **Trasera / Frontal** + lista de cámaras/capturadoras `enumerateDevices()`), selector de micrófono/entrada de línea, modo **Pantalla + Cámara (PiP)** en vivo con compositor `<canvas>` y esquina configurable para directos, y modo **Captura VHS** para digitalizar cintas desde capturadoras USB con audio limpio sin filtros de voz (`echoCancellation/noiseSuppression/autoGainControl: false`), formato 4:3/16:9 y escucha en directo (`setMonitor`).
+  - `src/lib/audio.js`: añadido `setMonitor(on)` y `replaceStreamSource(stream, channelId)` para cambiar entradas de micro/VHS y conectar audio de pantalla al canal secundario sin fugas ni acoples.
+  - `public/terminos.html`: página de Términos del Servicio para Google Play Console. Build en verde.
 
 ## Siguiente paso sugerido
 
